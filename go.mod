@@ -3,14 +3,13 @@ module article-to-kindle
 go 1.19
 
 require (
+	github.com/PuerkitoBio/goquery v1.5.1
 	github.com/bmaupin/go-epub v1.0.1
 	github.com/gocolly/colly/v2 v2.1.0
-	github.com/leotaku/mobi v0.0.0-20230108213510-57af39a5138d
-	golang.org/x/text v0.3.7
+	github.com/google/uuid v1.3.0
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.5.1 // indirect
 	github.com/andybalholm/cascadia v1.2.0 // indirect
 	github.com/antchfx/htmlquery v1.2.3 // indirect
 	github.com/antchfx/xmlquery v1.2.4 // indirect
@@ -25,6 +24,7 @@ require (
 	github.com/temoto/robotstxt v1.1.1 // indirect
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 	golang.org/x/net v0.0.0-20210505024714-0287a6fb4125 // indirect
+	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/protobuf v1.24.0 // indirect
 )
