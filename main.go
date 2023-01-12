@@ -9,8 +9,8 @@ import (
 	"github.com/gocolly/colly/v2"
 	"github.com/google/uuid"
 	"io"
-	"io/ioutil"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -18,8 +18,9 @@ import (
 )
 
 type Article struct {
-	text string
-	name string
+	text  string
+	name  string
+	topic string
 }
 
 type Fivefilters struct {
@@ -30,6 +31,10 @@ type Fivefilters struct {
 }
 
 func main() {
+	start := time.Now()
+	r := new(big.Int)
+	fmt.Println(r.Binomial(1000, 10))
+
 	downloadCoverPage()
 
 	fspLinks := findLinks()
@@ -38,9 +43,11 @@ func main() {
 
 	createEpub(articles)
 
+	elapsed := time.Since(start)
+	fmt.Printf("Binomial took %s", elapsed)
 }
 
-func createEpub(articles []Article) {
+func createEpub(topicArticles map[string][]Article) {
 	currentTime := time.Now()
 	tittle := fmt.Sprintf("Folha de SP - %s", currentTime.Format("02-01-2006"))
 	e := epub.NewEpub(tittle)
@@ -49,56 +56,73 @@ func createEpub(articles []Article) {
 	e.SetCover(image, "")
 	e.SetAuthor("Folha de São Paulo")
 
-	for i, article := range articles {
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.text))
-		if err != nil {
-			log.Fatal(err)
+	for topic, articles := range topicArticles {
+
+		sectionPath, _ := e.AddSection("", topic, "", "")
+		for i, article := range articles {
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.text))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			link, exists := doc.Find("p").Children().Attr("src")
+			if exists {
+				filename := fmt.Sprintf("%s.jpg", uuid.New())
+				linksmall := strings.ReplaceAll(link, "rt", "md")
+				linksmall = strings.ReplaceAll(linksmall, "xl", "md")
+				linksmall = strings.ReplaceAll(linksmall, "lg", "md")
+				downloadFile(linksmall, filename)
+				addImage, _ := e.AddImage("img/"+filename, filename)
+				article.text = strings.ReplaceAll(article.text, link, addImage)
+			}
+
+			e.AddSubSection(sectionPath, article.text, fmt.Sprintf("%d - %s", i, article.name), "", "")
 		}
 
-		link, exists := doc.Find("p").Children().Attr("src")
-		if exists {
-			filename := fmt.Sprintf("%s.jpg", uuid.New())
-			downloadFile(link, filename)
-			addImage, _ := e.AddImage("img/"+filename, filename)
-			article.text = strings.ReplaceAll(article.text, link, addImage)
-		}
-
-		e.AddSection(article.text, fmt.Sprintf("%d - %s", i, article.name), "", "")
 	}
 
-	err := e.Write(fmt.Sprintf("%s.epub", tittle))
+	err := e.Write("fsp.epub")
 	if err != nil {
 		fmt.Println("Error saving file")
 	}
 }
 
-func getArticles(fspLinks map[string]string) []Article {
+func getArticles(fspLinks map[string][]string) map[string][]Article {
 	cArticles := make(chan Article)
 
-	for name, link := range fspLinks {
-		fmt.Println("Requesting: ", name)
-		go getParsedLink(link, name, cArticles)
-		time.Sleep(50 * time.Millisecond)
+	topicArticles := make(map[string][]Article)
+
+	for topic, links := range fspLinks {
+		fmt.Println("Requesting topic: ", topic)
+		for _, link := range links {
+			fmt.Println("Requesting article: ", link)
+			go getParsedLink(link, topic, cArticles)
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		var articles []Article
+		for i := 0; i < len(links); i++ {
+			articles = append(articles, <-cArticles)
+		}
+		topicArticles[topic] = articles
 	}
 
-	var articles []Article
-
-	for i := 1; i < len(fspLinks); i++ {
-		articles = append(articles, <-cArticles)
-	}
-	return articles
+	return topicArticles
 }
 
-func findLinks() map[string]string {
+func findLinks() map[string][]string {
 	c := colly.NewCollector(
 		colly.AllowedDomains("www1.folha.uol.com.br"),
 	)
 
-	fspLinks := make(map[string]string)
-	c.OnHTML(".c-channel__headline", func(e *colly.HTMLElement) {
-
-		link, _ := e.DOM.Children().Attr("href")
-		fspLinks[e.Text] = link
+	fspLinks := make(map[string][]string)
+	c.OnHTML(".c-channel", func(e *colly.HTMLElement) {
+		topic := e.ChildTexts(".c-channel__title")[0]
+		topic = strings.TrimSpace(topic)
+		e.ForEach(".c-channel__headline", func(i int, h *colly.HTMLElement) {
+			link, _ := h.DOM.Children().Attr("href")
+			fspLinks[topic] = append(fspLinks[topic], link)
+		})
 	})
 
 	c.Visit("https://www1.folha.uol.com.br/fsp")
@@ -118,7 +142,7 @@ func downloadCoverPage() {
 	downloadFile(link, "cover.jpg")
 }
 
-func getParsedLink(link string, name string, textData chan Article) {
+func getParsedLink(link string, topic string, textData chan Article) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://pushtokindle.fivefilters.org/send.php?context=iframe&links=1&url=%s", link), nil)
 	if err != nil {
 		log.Fatal(err)
@@ -144,13 +168,13 @@ func getParsedLink(link string, name string, textData chan Article) {
 
 	var parsed Fivefilters
 
-	bytes, err := ioutil.ReadAll(resp.Body)
+	bytes, err := io.ReadAll(resp.Body)
 	err = json.Unmarshal(bytes, &parsed)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	textData <- Article{parsed.Body, parsed.Tittle}
+	textData <- Article{parsed.Body, parsed.Tittle, topic}
 }
 
 func downloadFile(URL, fileName string) error {
