@@ -81,7 +81,7 @@ func createEpub(topicArticles map[string][]Article) {
 
 	}
 
-	err := e.Write("fsp.epub")
+	err := e.Write(fmt.Sprintf("%s.epub", tittle))
 	if err != nil {
 		fmt.Println("Error saving file")
 	}
