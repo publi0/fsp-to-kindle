@@ -1,4 +1,4 @@
-# article-to-kindle
+# fsp-to-kindle
 
 Receba todas as noticias da edição impressa da Folha de SP direto no seu Kindle.
 
